@@ -4,7 +4,6 @@ This project aims at finding the route through which a particular person/car tra
 - Python
 - OpenCV
 - Numpy
-
 ##Authors
 - Akhil Guttula
 - Amit Kaushal
