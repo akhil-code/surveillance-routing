@@ -49,13 +49,14 @@ def drawBlobInfoOnImage(blobs,imgFrame2Copy):
         if (blobs[i].blnStillBeingTracked == True):
             rect_corner1 = (blobs[i].currentBoundingRect[0],blobs[i].currentBoundingRect[1])
             rect_corner2 = (blobs[i].currentBoundingRect[0]+blobs[i].width, blobs[i].currentBoundingRect[1]+blobs[i].height)
-
+            # font settings
             intFontFace = cv2.FONT_HERSHEY_SIMPLEX;
             dblFontScale = blobs[i].dblCurrentDiagonalSize / 60.0
             intFontThickness = int(round(dblFontScale * 1.0))
             point = ((rect_corner1[0]+rect_corner2[0])/2,(rect_corner1[1]+rect_corner2[1])/2)
-            cv2.putText(imgFrame2Copy, str(i), blobs[i].centerPositions[-1], intFontFace, dblFontScale, (0,255,0), intFontThickness);
-
+            # labels blob numbers
+            # cv2.putText(imgFrame2Copy, str(i), blobs[i].centerPositions[-1], intFontFace, dblFontScale, (0,255,0), intFontThickness);
+            # draws box around the blob
             cv2.rectangle(imgFrame2Copy, rect_corner1,rect_corner2, (0,0,255))
 
 
@@ -257,7 +258,6 @@ else:
 
 #variables used within the infinite loop
 blnFirstFrame = True        #is true if the frame captured is first frame
-frameCount = 2              #counts the number of frames captured
 blobs = []                  #captures all the new blobs found
 
 while cap.isOpened():
@@ -299,10 +299,11 @@ while cap.isOpened():
     #displays the blobs on the screen that are consistent or matched
     drawAndShowBlobs(imgFrame2.shape,blobs,"imgBlobs")
 
+    # blobs is the output of processing till here which has to be further used for our needs
+
     cv2.imshow("output",imgFrame2)
     #flagging the further frames
     blnFirstFrame = False
-    frameCount += 1             #increments the number of frames
     del currentFrameBlobs[:]    #clearing the currentFrameBlobs to capture newly formed blobs
 
     key_in = cv2.waitKey(85) & 0xFF
