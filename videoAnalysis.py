@@ -34,7 +34,7 @@ def getDifferenceHulls(cap):
 
 
     #finding contours of the thresholded image
-    contours, hierarchy = cv2.findContours(imgThresh,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+    _, contours, hierarchy = cv2.findContours(imgThresh,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
 
     #finding and drawing convex hulls
     hulls = []  #used to store hulls
@@ -248,17 +248,16 @@ def isWithinEllipse(x,y):
 
 #MAIN CODE
 
-cap = cv2.VideoCapture('video.avi')
-light = cv2.imread('light.jpg')
-ref_rows,ref_cols,_ = light.shape
-
-#variables used within the infinite loop
-blnFirstFrame = True
-frameCount = 2              #counts the number of frames captured
+cap = cv2.VideoCapture('video.avi')     #video file object
+#checks if the video file is valid
 if cap.isOpened():
     _,imgFrame1 = cap.read()   #capturing the first reference frame
 else:
     sys.exit()
+
+#variables used within the infinite loop
+blnFirstFrame = True        #is true if the frame captured is first frame
+frameCount = 2              #counts the number of frames captured
 blobs = []                  #captures all the new blobs found
 
 while cap.isOpened():
@@ -280,14 +279,10 @@ while cap.isOpened():
         (cv2.contourArea(possibleBlob.currentContour) / float(possibleBlob.area)) > 0.40):
 
             currentFrameBlobs.append(possibleBlob)
-            # possibleBlob.printInfo()
         del possibleBlob
 
     #replacing the frame1 with frame2, so that newly captured frame can be stored in frame2
     imgFrame1 = imgFrame2.copy()
-
-    #mouse tracking
-    cv2.setMouseCallback('output',detect_point)
 
     #displaying any movement in the output screen
     if(len(currentFrameBlobs) > 0):
@@ -304,25 +299,16 @@ while cap.isOpened():
     #displays the blobs on the screen that are consistent or matched
     drawAndShowBlobs(imgFrame2.shape,blobs,"imgBlobs")
 
-
-    cv2.ellipse(imgFrame2, (436,381), (200,100), 0, 0, 360, (0,0,255), 5)
-    peopleCount = 0
-    for currentFrameBlob in currentFrameBlobs:
-        if currentFrameBlob.inside:
-            peopleCount += 1
-            cv2.line(imgFrame2,currentFrameBlob.currentCenter,(currentFrameBlob.currentCenter[0],currentFrameBlob.currentCenter[1]+currentFrameBlob.height/2),[255,0,0],2)
-    # print peopleCount
-
-    if peopleCount > 0:
-        imgFrame2[20:20+ref_rows, 380:380+ref_cols ] = light
-        pass
-
     cv2.imshow("output",imgFrame2)
     #flagging the further frames
     blnFirstFrame = False
     frameCount += 1             #increments the number of frames
     del currentFrameBlobs[:]    #clearing the currentFrameBlobs to capture newly formed blobs
-    cv2.waitKey(85)
 
+    key_in = cv2.waitKey(85) & 0xFF
+    if(key_in == ord('q')):
+        break
+
+#deletes all the opened windows
 cap.release()
 cv2.destroyAllWindows()
