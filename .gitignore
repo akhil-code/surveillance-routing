@@ -1,2 +1,5 @@
 #exception list
 *.avi
+database/
+test.py
+

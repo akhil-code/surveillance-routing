@@ -79,15 +79,15 @@ def drawAndShowBlobs(imageSize,blobs,strWindowsName):
     cv2.imshow(strWindowsName, image);
 
 def getBlobROIs(blobs, srcImage):
+    global file_counter
     rois = []
     for blob in blobs:
         if blob.blnStillBeingTracked == True:
             x,y,w,h = blob.currentBoundingRect #x,y,w,h
             roi = srcImage[y:y+h, x:x+w]
             rois.append(roi)
-
-    for i in range(len(rois)):
-        cv2.imshow("roi:"+str(i),rois[i])
+            cv2.imwrite("database/img{}.jpg".format(file_counter),roi)
+            file_counter += 1
 
 #find the distance between two points p1 and p2
 def distanceBetweenPoints(point1,point2):
@@ -269,6 +269,7 @@ else:
 #variables used within the infinite loop
 blnFirstFrame = True        #is true if the frame captured is first frame
 blobs = []                  #captures all the new blobs found
+file_counter = 0
 
 while cap.isOpened():
     #obtaining convex hulls and newly captured image
@@ -318,7 +319,7 @@ while cap.isOpened():
     blnFirstFrame = False
     del currentFrameBlobs[:]    #clearing the currentFrameBlobs to capture newly formed blobs
 
-    key_in = cv2.waitKey(0) & 0xFF
+    key_in = cv2.waitKey(100) & 0xFF
     if(key_in == ord('q')):
         break
 
