@@ -67,9 +67,8 @@ def drawAndShowContours(imageSize,contours,strImageName):
     cv2.imshow(strImageName, image);
 
 #draws the contours similar to the drawAndShowContours function
-#but here the input provided is not the contours but object of class
-#Blob
-def drawAndShowBlobs(imageSize,blobs,strImageName):
+#but here the input provided is not the contours but object of class Blob
+def drawAndShowBlobs(imageSize,blobs,strWindowsName):
     image = np.zeros(imageSize, dtype=np.uint8)
     contours = []
     for blob in blobs:
@@ -77,7 +76,18 @@ def drawAndShowBlobs(imageSize,blobs,strImageName):
             contours.append(blob.currentContour)
 
     cv2.drawContours(image, contours, -1,(255,255,255), -1);
-    cv2.imshow(strImageName, image);
+    cv2.imshow(strWindowsName, image);
+
+def getBlobROIs(blobs, srcImage):
+    rois = []
+    for blob in blobs:
+        if blob.blnStillBeingTracked == True:
+            x,y,w,h = blob.currentBoundingRect #x,y,w,h
+            roi = srcImage[y:y+h, x:x+w]
+            rois.append(roi)
+
+    for i in range(len(rois)):
+        cv2.imshow("roi:"+str(i),rois[i])
 
 #find the distance between two points p1 and p2
 def distanceBetweenPoints(point1,point2):
@@ -285,9 +295,10 @@ while cap.isOpened():
     imgFrame1 = imgFrame2.copy()
 
     #displaying any movement in the output screen
+    img_rectangles = imgFrame2.copy()
     if(len(currentFrameBlobs) > 0):
         drawAndShowBlobs(imgFrame2.shape,currentFrameBlobs,"imgCurrentFrameBlobs")
-        drawBlobInfoOnImage(currentFrameBlobs,imgFrame2)
+        drawBlobInfoOnImage(currentFrameBlobs,img_rectangles)
 
     #checks if the frame is the first frame of the video
     if blnFirstFrame == True:
@@ -300,13 +311,14 @@ while cap.isOpened():
     drawAndShowBlobs(imgFrame2.shape,blobs,"imgBlobs")
 
     # blobs is the output of processing till here which has to be further used for our needs
+    getBlobROIs(blobs,imgFrame2.copy())
 
-    cv2.imshow("output",imgFrame2)
+    cv2.imshow("output",img_rectangles)
     #flagging the further frames
     blnFirstFrame = False
     del currentFrameBlobs[:]    #clearing the currentFrameBlobs to capture newly formed blobs
 
-    key_in = cv2.waitKey(85) & 0xFF
+    key_in = cv2.waitKey(0) & 0xFF
     if(key_in == ord('q')):
         break
 
