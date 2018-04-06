@@ -1,17 +1,11 @@
 import cv2,urllib,sys,math, sys
 import numpy as np
-# import inspect
+import inspect
 from matplotlib import pyplot as plt
 
 #FUNCTIONS
 #executes first part of the program. i.e to find the difference between two frames
-def getDifferenceHulls(cap):
-    #capturing two reference frames
-    _,imgFrame2 = cap.read()
-
-    if imgFrame2 is None:
-        sys.exit(1)
-
+def getDifferenceHulls(imgFrame1,imgFrame2):
     #making duplicates of the above frames
     imgFrame1Copy = imgFrame1.copy()
     imgFrame2Copy = imgFrame2.copy()
@@ -45,7 +39,7 @@ def getDifferenceHulls(cap):
     for cnt in contours:
         hulls.append(cv2.convexHull(cnt))
 
-    return hulls,imgFrame2
+    return hulls
 
 #draws the rectangles on the motion detected object
 def drawBlobInfoOnImage(blobs,imgFrame2Copy):
@@ -61,7 +55,7 @@ def drawBlobInfoOnImage(blobs,imgFrame2Copy):
             point = ((rect_corner1[0]+rect_corner2[0])/2,(rect_corner1[1]+rect_corner2[1])/2)
 
             # labels blob numbers
-            # cv2.putText(imgFrame2Copy, str(i), blobs[i].centerPositions[-1], intFontFace, dblFontScale, (0,255,0), intFontThickness);
+            cv2.putText(imgFrame2Copy, str(blobs[i].featureMatches), blobs[i].centerPositions[-1], intFontFace, dblFontScale, (0,255,0), intFontThickness);
             # draws box around the blob
             cv2.rectangle(imgFrame2Copy, rect_corner1,rect_corner2, (0,0,255))
 
@@ -83,18 +77,49 @@ def drawAndShowBlobs(imageSize,blobs,strWindowsName):
     cv2.drawContours(image, contours, -1,(255,255,255), -1);
     cv2.imshow(strWindowsName, image);
 
-def getBlobROIs(blobs, srcImage):
-    rois = []
-    i = 0
-    for blob in blobs:
-        if blob.blnStillBeingTracked == True:
-            x,y,w,h = blob.currentBoundingRect #x,y,w,h
-            roi = srcImage[y:y+h, x:x+w]
-            # cv2.namedWindow("roi:"+str(i), cv2.WINDOW_AUTOSIZE)
-            # cv2.imshow("roi:"+str(i),roi)
-            rois.append(roi)
-            i += 1
-    return rois
+def findTarget(target,currentFrameBlobs):
+    for blob in currentFrameBlobs:
+        img_2 = target.copy()
+        img_1 = blob.currentROI
+
+        img1=cv2.cvtColor(img_1,cv2.COLOR_BGR2GRAY)
+        img2=cv2.cvtColor(img_2,cv2.COLOR_BGR2GRAY)
+
+        # Initiate SIFT detector
+        sift = cv2.SIFT()
+
+        # find the keypoints and descriptors with SIFT
+        kp1, des1 = sift.detectAndCompute(img1,None)
+        kp2, des2 = sift.detectAndCompute(img2,None)
+        # print len(kp1),len(kp2)
+        #FLANN
+        FLANN_INDEX_KDTREE = 0
+        index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
+        search_params = dict(checks=50) # or pass empty dictionary
+        flann = cv2.FlannBasedMatcher(index_params,search_params)
+        try:
+            matches = flann.knnMatch(des1,des2,k=2)
+            variables=[i for i in dir(matches[0][0]) if not inspect.ismethod(i)]
+            # Need to draw only good matches, so create a mask
+            matchesMask = [[0,0] for i in xrange(len(matches))]
+
+            rows1=img1.shape[0]
+            cols1=img1.shape[1]
+            rows2=img2.shape[0]
+            cols2=img2.shape[1]
+            out=np.zeros((max(rows1,rows2),cols1+cols2,1))
+            out[:rows1,:cols1]=np.dstack([img1])
+            out[:rows2,cols1:]=np.dstack([img2])
+            count=0
+            for i,(m,n) in enumerate(matches):
+                if m.distance < 0.7*n.distance:
+                    count += 1
+            blob.featureMatches = count
+            print blob.featureMatches
+
+        except:
+            return
+
 
 #find the distance between two points p1 and p2
 def distanceBetweenPoints(point1,point2):
@@ -121,7 +146,7 @@ def matchCurrentFrameBlobsToExistingBlobs(existingBlobs,currentFrameBlobs):
                     dblLeastDistance = dblDistance
                     intIndexOfLeastDistance = i
 
-        if (dblLeastDistance < currentFrameBlob.dblCurrentDiagonalSize * 6):     #1.15 origianal, 5
+        if (dblLeastDistance < currentFrameBlob.dblCurrentDiagonalSize * 3):     #1.15 origianal, 5
             addBlobToExistingBlobs(currentFrameBlob, existingBlobs, intIndexOfLeastDistance)
         else:
             addNewBlob(currentFrameBlob, existingBlobs)
@@ -137,6 +162,11 @@ def matchCurrentFrameBlobsToExistingBlobs(existingBlobs,currentFrameBlobs):
 #adds the details of the matching blob to the existingBlob
 def addBlobToExistingBlobs(currentFrameBlob,existingBlobs,i):
     # print 'found continuos blob'
+
+    existingBlobs[i].noOfTimesAppeared += 1
+    existingBlobs[i].rois.append(currentFrameBlob.currentROI)
+    existingBlobs[i].featureMatches += currentFrameBlob.featureMatches
+    existingBlobs[i].noOfTimesAppeared += currentFrameBlob.noOfTimesAppeared
 
     existingBlobs[i].currentContour = currentFrameBlob.currentContour;
     existingBlobs[i].currentBoundingRect = currentFrameBlob.currentBoundingRect;
@@ -165,9 +195,10 @@ class Blob:
     def printInfo(self):
         print 'area: '+str(self.area)+' Pos: '+str(self.centerPositions)
 
-    def __init__(self, _contour):
+    def __init__(self, _contour,srcImage):
         self.centerPositions = []
         self.predictedNextPosition = [-1,-1]
+
 
         self.currentContour = _contour
         self.currentBoundingRect = cv2.boundingRect(self.currentContour)  #x,y,w,h
@@ -182,6 +213,12 @@ class Blob:
 
         self.dblCurrentDiagonalSize = math.sqrt(math.pow(self.currentBoundingRect[2], 2) + math.pow(self.currentBoundingRect[3], 2));
         self.dblCurrentAspectRatio = float(self.currentBoundingRect[2])/float(self.currentBoundingRect[3])
+
+        x,y,w,h = self.currentBoundingRect #x,y,w,h
+        self.currentROI = srcImage[y:y+h, x:x+w]
+        self.rois = []
+        self.noOfTimesAppeared = 1
+        self.featureMatches = 0
 
         # flags
         self.blnStillBeingTracked = True;
@@ -262,6 +299,11 @@ def detect_point(event,x,y,flags,param):
 #MAIN CODE
 src = cv2.imread("database/img0.jpg")
 cap = cv2.VideoCapture('video.avi')     #video file object
+target = cv2.imread("database/img2215.jpg")
+
+cv2.namedWindow("target",cv2.WINDOW_NORMAL)
+cv2.imshow("target",target)
+
 #checks if the video file is valid
 if cap.isOpened():
     _,imgFrame1 = cap.read()   #capturing the first reference frame
@@ -273,13 +315,20 @@ blnFirstFrame = True        #is true if the frame captured is first frame
 blobs = []                  #holder for all the blobs
 
 while cap.isOpened():
+
+    #capturing second reference frame
+    _,imgFrame2 = cap.read()
+
+    if imgFrame2 is None:
+        break
+
     #obtaining convex hulls and newly captured image
-    hulls,imgFrame2 = getDifferenceHulls(cap)
+    hulls = getDifferenceHulls(imgFrame1,imgFrame2)
 
     #Blob validation
     currentFrameBlobs = []
     for hull in hulls:
-        possibleBlob = Blob(hull)
+        possibleBlob = Blob(hull,imgFrame2.copy())
 
         #conditions to approximate the blobs
         if (possibleBlob.area > 100 and \
@@ -299,9 +348,16 @@ while cap.isOpened():
     #displaying any movement in the output screen
     img_current_blobs = imgFrame2.copy()
     img_all_blobs = imgFrame2.copy()
-    if(len(currentFrameBlobs) > 0):
-        # drawAndShowBlobs(imgFrame2.shape,currentFrameBlobs,"imgCurrentFrameBlobs")
-        drawBlobInfoOnImage(currentFrameBlobs,img_current_blobs)
+    # if(len(currentFrameBlobs) > 0):
+    #     # drawAndShowBlobs(imgFrame2.shape,currentFrameBlobs,"imgCurrentFrameBlobs")
+    #     drawBlobInfoOnImage(currentFrameBlobs,img_current_blobs)
+
+    # finding match
+    findTarget(target,currentFrameBlobs)
+
+    # drawing current frame blobs with matches
+    drawBlobInfoOnImage(currentFrameBlobs,img_current_blobs)
+
 
     #checks if the frame is the first frame of the video
     # MATCHING PROCESS
@@ -311,32 +367,32 @@ while cap.isOpened():
     else:
         matchCurrentFrameBlobsToExistingBlobs(blobs,currentFrameBlobs)
 
-
-    # drawing current frame blobs
-    drawBlobInfoOnImage(currentFrameBlobs,img_all_blobs)
-
-    blobs_active = 0
-    for blob in blobs:
-        # if blob.blnStillBeingTracked == True:
-        blobs_active += 1
-        color = tuple([int(c) for c in np.random.rand(3)*255])
-        for pos in blob.centerPositions:
-            cv2.circle(img_all_blobs,tuple(pos), 4, color, -1)
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        cv2.line(img_all_blobs,tuple(blob.predictedNextPosition),blob.centerPositions[-1],color,2)
+    # blobs_active = 0
+    # for blob in blobs:
+    #     if blob.blnStillBeingTracked == True:
+    #         blobs_active += 1
+    #         color = tuple([int(c) for c in np.random.rand(3)*255])
+    #         for pos in blob.centerPositions:
+    #             cv2.circle(img_all_blobs,tuple(pos), 4, color, -1)
+    #         font = cv2.FONT_HERSHEY_SIMPLEX
+    #         cv2.line(img_all_blobs,tuple(blob.predictedNextPosition),blob.centerPositions[-1],color,2)
 
 
-    print 'current: {}      total: {}'.format(len(currentFrameBlobs),blobs_active)
+    # print '{} current, {} total'.format(len(currentFrameBlobs),len(blobs))
+
     cv2.imshow("current blobs",img_current_blobs)
-    cv2.imshow("All blobs",img_all_blobs)
+    # cv2.imshow("All blobs",img_all_blobs)
 
     #flagging subsequent frames
     blnFirstFrame = False
     del currentFrameBlobs[:]    #clearing the currentFrameBlobs to capture newly formed blobs
 
-    key_in = cv2.waitKey(0) & 0xFF
+    key_in = cv2.waitKey(5) & 0xFF
     if(key_in == ord('q')):
         break
+
+print '\n\n\n\n################################################################'
+print 'total no of blobs: {}'.format(len(blobs))
 
 #deletes all the opened windows
 cap.release()
